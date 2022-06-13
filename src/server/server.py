@@ -4,6 +4,7 @@ sys.path.insert(0,"..")
 from utilities import *
 from request_manager import RequestManager
 import logging as log
+import signal
 
 class Server:
     def __init__(self, address, port) -> None:
@@ -12,8 +13,10 @@ class Server:
         self.port = port
         self.socket = sock.socket(sock.AF_INET, sock.SOCK_DGRAM)
         self.socket.bind((address, port))
+        signal.signal(signal.SIGINT, self.close)
     
     def close(self):
+        print("Closing server...")
         self.socket.close()
         sys.exit(0)
     
@@ -25,5 +28,5 @@ class Server:
             pkt = decode_package(data)
             if not checksum_integrity(pkt):
                 print("Checksum failed")
-            req_manger = RequestManager(addr, pkt["op"])
+            req_manger = RequestManager(addr, pkt["op"], pkt["payload"])
             req_manger.start()
