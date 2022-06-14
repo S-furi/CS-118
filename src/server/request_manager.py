@@ -1,13 +1,8 @@
 import base64
-from fileinput import filename
 import logging
 import math
-from shutil import ExecError
-from stat import FILE_ATTRIBUTE_NORMAL
 from threading import Thread
 import socket as sock
-import sys
-import time
 from utilities import *
 import os
 import signal
@@ -36,7 +31,7 @@ class RequestManager(Thread):
                     self._send_packet("FIN", "ok")
             else:
                 self._send_packet("FIN", "failure")
-
+        self._close()
 
     def _listing(self) -> bool:
         try:
@@ -52,17 +47,13 @@ class RequestManager(Thread):
         finally:
             self._close()
         
-        
-
     def _get_file(self, filename : str, seqno : int) -> bool:
         try:    
             if seqno == -1:
                 if os.listdir(self.file_dir).__contains__(filename):
                     print(f"{filename} is present")
                     path = self.file_dir + "/" + filename
-                    splitFile = list(self._divide_chuncks(path, self.sending_buffer_size))
-                    num_packet_to_send = len(splitFile)
-                    print(f'{filename} is {os.path.getsize(path)} bytes and will be divided into {num_packet_to_send} packets')
+                    num_packet_to_send = math.ceil(os.path.getsize(path)/self.sending_buffer_size)
                     self._send_packet("GET", num_packet_to_send)
                     return True
                 else:
@@ -88,11 +79,6 @@ class RequestManager(Thread):
         data =  f.read(self.sending_buffer_size)
         f.close()
         return data
-
-    def _divide_chuncks(self, filename : str, size : int): 
-        with open(filename, 'rb') as f:
-            while content := f.read(size):
-                yield content
 
     def _send_packet(self, operation : str, paylaod : str, seqno=0):
         pkt = build_packet(operation, paylaod, seqno)
