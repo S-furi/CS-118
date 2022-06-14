@@ -1,13 +1,15 @@
 import base64
 import socket as sock
+import os
 import sys
-import logging as log
+import logging
 sys.path.insert(0, "..")
 from utilities import *
-import os
+
 class Client:
     def __init__(self, server_addr):
         self.socket = sock.socket(sock.AF_INET, sock.SOCK_DGRAM)
+        self.socket.settimeout(4)
         self.server_addr = server_addr
         self.buffer_size = 4096
         self.files_dir = "./downloads"
@@ -40,11 +42,12 @@ class Client:
                 data_chunk = base64.b64decode(payload.encode())
                 file_to_write.write(data_chunk)
             print(f"received {i} packages and {bytes_count} bytes in total")
-            if i+1 == expected_packages:
-                self._send_pkt("FIN", "ok")
+            data, addr = self.socket.recvfrom(self.buffer_size)
+            data = decode_package(data)
+            if i+1 == expected_packages and (data.get('op') == "FIN" and data.get('payload') == "ok") :
                 print(f"\n*** SUCCESFULLY DOWNLOADED \'{filename}\' ***\n")
             else:
-                print("something went wrong during download")
+                print("something went wrong during download, try again")
             
 
     def _check_incoming_package(self, raw_data : bytes) -> dict:
@@ -55,7 +58,7 @@ class Client:
         if checksum_integrity(data):
             return data
         else:
-            log.error("checksum is incorrect: package may be corrupted...")
+            logging.error("checksum is incorrect: package may be corrupted...")
             return None
 
     def _send_pkt(self, operation : str, payload):
