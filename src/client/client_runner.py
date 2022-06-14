@@ -13,7 +13,9 @@ while True:
     elif op == '2':
         filename = input("Insersci il nome del file: ")
         filename = filename.lower()
-        clnt.get_file(filename)
+        if not clnt.get_file(filename):
+            print("Client failed")
+            sys.exit(0)
     elif op == '3':
         print("Bye bye")
         sys.exit(0)
