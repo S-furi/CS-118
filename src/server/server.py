@@ -24,9 +24,8 @@ class Server:
         print(f"Server up on port {self.port} ready to receive")
         while True:
             data, addr = self.socket.recvfrom(self.buffer_size)
-            print(f"received data from {addr}")
             pkt = decode_package(data)
             if not checksum_integrity(pkt):
                 print("Checksum failed")
-            req_manger = RequestManager(addr, pkt["op"], pkt["payload"])
+            req_manger = RequestManager(addr, pkt["op"], pkt["payload"], pkt["seqno"])
             req_manger.start()
