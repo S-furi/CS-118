@@ -1,9 +1,10 @@
 import base64
+import math
 import socket as sock
 import os
 import sys
 import logging
-from time import sleep
+from time import sleep, time
 sys.path.insert(0, "..")
 from utilities import *
 
@@ -14,10 +15,13 @@ class Client:
         self.server_addr = server_addr
         self.buffer_size = 4096
         self.sending_rate = 2048
+        self.upload_dir = "./upload"
         self.files_dir = "./downloads"
         if not os.path.isdir(self.files_dir):
             os.mkdir(self.files_dir)
-        
+        if not os.path.isdir(self.upload_dir):
+            os.mkdir(self.upload_dir)
+
     def get_list(self) -> bool:
         self._send_pkt("LIST", None)
         try:
@@ -80,6 +84,36 @@ class Client:
         self.socket.close()
         return True
 
+    def upload_file(self, filename : str) -> bool:
+        filepath = self.upload_dir + "/" + filename
+        if not os.path.isfile(filepath):
+            logging.warning(f"{filename} does not appear to be in upload directory")
+            return False
+        print(f"{filename} exists, preparing to upload")
+
+        self._send_pkt("PUT", filename, seqno=-1)
+
+        data, addr = self.socket.recvfrom(self.buffer_size)
+        #If everything is ok, server is ready to receive file chunks
+        if not self._check_incoming_package(data):
+            print('An error occurred, please try again')
+            return False
+
+        file_chunks = self._get_file_chunks(filepath, self.sending_rate)
+        chunks_no = math.ceil(os.path.getsize(filepath)/self.sending_rate)
+        print(f'{filename} is {os.path.getsize(filepath)} and will be divided into {chunks_no} chunks')
+
+        i = 0
+        for chunck in file_chunks:
+            payload = base64.b64encode(chunck).decode('utf-8')
+            self._send_pkt("PUT", payload, i)
+            i += 1
+
+    def _get_file_chunks(self, filepath : str, size : int):
+        with open(filepath, 'rb') as f:
+            while content := f.read(size):
+                yield content
+
     def _check_incoming_package(self, raw_data : bytes) -> bool:
         pkt = decode_package(raw_data)
         if pkt.get('op') == "FIN" and pkt.get('payload') == "failure":
@@ -94,6 +128,7 @@ class Client:
     def _send_pkt(self, operation : str, payload, seqno=0):
         pkt = build_packet(operation, payload, seqno)
         pkt["checksum"] = compute_checksum(pkt)
+        size = pkt.get('size')
         data = json.dumps(pkt)
         self.socket.sendto(data.encode(), self.server_addr)
         
