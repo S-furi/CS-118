@@ -13,7 +13,6 @@ class RequestManager(Thread):
     def __init__(self, addr, operation : str, payload=None) -> None:
         super().__init__()
         self.socket = sock.socket(sock.AF_INET, sock.SOCK_DGRAM)
-        self.socket.settimeout(2)
         self.cl_addr = addr
         self.request_op = operation
         self.request_payload = payload
