@@ -18,55 +18,64 @@ class Client:
         if not os.path.isdir(self.files_dir):
             os.mkdir(self.files_dir)
         
-    def get_list(self):
+    def get_list(self) -> bool:
         self._send_pkt("LIST", None)
-        data, addr = self.socket.recvfrom(self.buffer_size)
-        if self._check_incoming_package(data):
-            pkg = decode_package(data)
-            print("Files available for download:")
-            for name in pkg.get('payload').split():
-                print(f'-{name}')
+        try:
+            data, addr = self.socket.recvfrom(self.buffer_size)
+            if self._check_incoming_package(data):
+                pkg = decode_package(data)
+                print("Files available for download:")
+                for name in pkg.get('payload').split():
+                    print(f'-{name}')
+                return True
+        except sock.timeout:
+            logging.error("TIME OUT!")
+            return False
 
-    def get_file(self, filename : str):
+    def get_file(self, filename : str) -> bool:
         try:
             print(f"Sending request for {filename} to the server")
             self._send_pkt("GET", filename, -1)
             raw_data, addr = self.socket.recvfrom(self.buffer_size)
-            sleep(1)    
             data = decode_package(raw_data)
-            if self._check_incoming_package(raw_data) and not (data.get('op') == "FIN"):
-                
-                expected_packets = data.get('payload')
-                
-                filepath = self.files_dir + "/copy_" + filename
-                
-                f = open(filepath, 'w+b')
-                for i in range(expected_packets):
-                    self._send_pkt("GET", filename, i)
-                    raw_data, addr = self.socket.recvfrom(self.buffer_size)
-                    pkg = decode_package(raw_data)
-                    rcv_seqno = pkg.get('seqno')
-                    
-                    if rcv_seqno != i:
-                        logging.error(f'Expected #{i} but received #{rcv_seqno}, aborting operation try again')
-                        return False
-                    
-                    chunck = base64.b64decode(pkg.get('payload').encode())
-                    f.write(chunck)
+            
+            if not(self._check_incoming_package(raw_data) and (data.get('op') == "FIN")):
+                logging.warning("File not found")
+                return False
 
-                f.close()
-            else:
-                logging.warning("The file is not found")
+            expected_packets = data.get('payload')
+            
+            filepath = self.files_dir + "/copy_" + filename
+            f = open(filepath, 'w+b')
+
+            for i in range(expected_packets):
+                self._send_pkt("GET", filename, i)
+                raw_data, addr = self.socket.recvfrom(self.buffer_size)
+                if self._check_incoming_package(raw_data):
+                    return False
+
+                pkg = decode_package(raw_data)
+                rcv_seqno = pkg.get('seqno')
+                
+                if rcv_seqno != i:
+                    logging.error(f'Expected #{i} but received #{rcv_seqno}, aborting operation try again')
+                    return False
+                
+                chunck = base64.b64decode(pkg.get('payload').encode())
+                f.write(chunck)
+            f.close()
+    
         except sock.timeout:
             logging.error("TIME OUT!")
             return False
-        finally:
-            data, addr = self.socket.recvfrom(self.buffer_size)
-            if not self._check_incoming_package(data):
-                logging.error("Something went wrong during download, please try again")
-            else:
-                print(f"{filename} succesfully downloaded")
-            self.socket.close()
+        
+        data, addr = self.socket.recvfrom(self.buffer_size)
+        if not self._check_incoming_package(data):
+            logging.error("Something went wrong during download, please try again")
+        else:
+            print(f"{filename} succesfully downloaded")
+        
+        self.socket.close()
         return True
 
     def _check_incoming_package(self, raw_data : bytes) -> bool:
