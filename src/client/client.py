@@ -39,7 +39,7 @@ class Client:
             raw_data, addr = self.socket.recvfrom(self.buffer_size)
             data = decode_package(raw_data)
             
-            if not(self._check_incoming_package(raw_data) and (data.get('op') == "FIN")):
+            if not self._check_incoming_package(raw_data) or data.get('op') == "FIN":
                 logging.warning("File not found")
                 return False
 
@@ -51,12 +51,13 @@ class Client:
             for i in range(expected_packets):
                 self._send_pkt("GET", filename, i)
                 raw_data, addr = self.socket.recvfrom(self.buffer_size)
-                if self._check_incoming_package(raw_data):
+               
+                if not self._check_incoming_package(raw_data):
                     return False
 
                 pkg = decode_package(raw_data)
                 rcv_seqno = pkg.get('seqno')
-                
+                #Check if arrived package is the expected one
                 if rcv_seqno != i:
                     logging.error(f'Expected #{i} but received #{rcv_seqno}, aborting operation try again')
                     return False
@@ -69,6 +70,7 @@ class Client:
             logging.error("TIME OUT!")
             return False
         
+        #Receiving final outcome of the operation
         data, addr = self.socket.recvfrom(self.buffer_size)
         if not self._check_incoming_package(data):
             logging.error("Something went wrong during download, please try again")
@@ -81,7 +83,7 @@ class Client:
     def _check_incoming_package(self, raw_data : bytes) -> bool:
         pkt = decode_package(raw_data)
         if pkt.get('op') == "FIN" and pkt.get('payload') == "failure":
-            print("PACKAGE FAILED")
+            logging.warning("A problem occurred, server failed sending packet, please try again")
             return False
         if checksum_integrity(pkt):
             return True
