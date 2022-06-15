@@ -75,46 +75,57 @@ class RequestManager(Thread):
             return False
 
     def _upload_file(self, payload : str, seqno : str) -> bool:
-        if seqno == -1:
-            if  os.path.isdir("./tmp"):
-                shutil.rmtree("./tmp")
-            os.mkdir("./tmp")
-            filepath = "./tmp/" + payload
-            Path(filepath).touch()
-            #Server ready to receive
-            self._send_packet("PUT", None)
-        else:
-            filename = os.listdir("./tmp")[0]
-            filename = filename.replace("\'","")
-            dump_path = "./tmp/dump.txt"
+        try:
+            if seqno == -1:
+                if  os.path.isdir("./tmp"):
+                    shutil.rmtree("./tmp")
+                os.mkdir("./tmp")
+                filepath = "./tmp/" + payload
+                Path(filepath).touch()
+                #Server ready to receive
+                self._send_packet("PUT", None)
+            else:
+                filename = os.listdir("./tmp")[0]
+                filename = filename.replace("\'","")
+                dump_path = "./tmp/dump.txt"
 
-            chunck = {
-                "seqno" : seqno,
-                "payload" : payload
-            }
-            w = open(dump_path, "a")
-            w.write(json.dumps(chunck))
-            w.close()
+                chunck = {
+                    "seqno" : seqno,
+                    "payload" : payload
+                }
+                w = open(dump_path, "a")
+                w.write(json.dumps(chunck))
+                w.close()
+                
+                if sys.getsizeof(base64.b64decode(payload.encode())) < self.sending_buffer_size:
+                    #last packet
+                    if not self._compose_file(dump_path, f"./tmp/{filename}"):
+                        return False
+        except Exception as e:
+            logging.error("An error occurred: " + e)
+            return False
+        
+        return True
             
-            if sys.getsizeof(base64.b64decode(payload.encode())) < self.sending_buffer_size:
-                #last packet
-                self._compose_file(dump_path, f"./tmp/{filename}")
-            
 
-    def _compose_file(self, dump : str, path : str):
-        f = open(dump, 'r')
-        chuncks = f.read().replace("}{", "};{")
+    def _compose_file(self, dump : str, path : str) -> bool:
+        try:
+            f = open(dump, 'r')
+            chuncks = f.read().replace("}{", "};{")
 
-        lst = []
-        for c in chuncks.split(";"):
-            lst.append(json.loads(c))
-        lst = sorted(lst, key=lambda t : t['seqno'])
+            lst = []
+            for c in chuncks.split(";"):
+                lst.append(json.loads(c))
+            lst = sorted(lst, key=lambda t : t['seqno'])
 
-        w = open(path, 'wb')
-        for obj in lst:
-            load = base64.b64decode(obj.get("payload"))
-            w.write(load)
-        self._save_file(path)
+            w = open(path, 'wb')
+            for obj in lst:
+                load = base64.b64decode(obj.get("payload"))
+                w.write(load)
+            self._save_file(path)
+        except Exception:
+            return False
+        return True
 
     def _save_file(self, filepath):
         shutil.move(filepath, self.file_dir)
