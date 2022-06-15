@@ -8,6 +8,6 @@ Required actions are (client side):
 ### Instructions
 First, launch the **server** with ```python3 server_runner.py``` and then run the **client** with:```python3 client_runner.py```. A list of all the operations is displayed and client waits for user's input choice:
 1. **Listing** 
-2. **Get** and then it's required to type the correct filename
-3. **Put** and then same as above.
+2. **Get**, and then it's required to type the correct filename
+3. **Put**, and then same as above.
 4. **Exit**
