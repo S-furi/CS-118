@@ -1,9 +1,9 @@
 import base64
-import pickle
 import logging
 import math
 from threading import Thread
 import socket as sock
+
 from utilities import *
 import os
 from pathlib import Path
@@ -21,25 +21,37 @@ class RequestManager(Thread):
         self.pakcet_to_deliver = seqno
         self.file_dir = "./files"
         self.finish_sending = False
-        self.sending_buffer_size = 2048
-        self.receiving_buffer_size = 4096
+        self.sending_rate = 2048
+        self.buffer_size = 4096
         signal.signal(signal.SIGINT, self._close)
     
     def run(self) -> None:
         if self.request_op == "LIST":
-            self._listing()
+            self._send_outcome(self._listing(), "LIST")
+        
         if self.request_op == "GET":
-            if self._get_file(self.request_payload, self.pakcet_to_deliver):
-                if self.finish_sending:
-                    print("File succefully sent!\n")
-                    self._send_packet("FIN", "ok")
-            else:
-                self._send_packet("FIN", "failure")
+            if not self._get_file(self.request_payload, self.pakcet_to_deliver):
+                self._send_outcome(False, "GET")
+            if self.finish_sending:
+               self._send_outcome(True, "GET")
+        
         if self.request_op == "PUT":
-            self._upload_file(self.request_payload, self.pakcet_to_deliver)
+            if self.pakcet_to_deliver == -2:
+                self._send_outcome(self._upload_file(self.request_payload, self.pakcet_to_deliver), "PUT")
+            elif not self._upload_file(self.request_payload, self.pakcet_to_deliver):
+                self._send_outcome(False, "PUT")
 
         self._close()
         
+    
+    def _send_outcome(self, outcome : bool, op_name : str):
+            if outcome:
+                self._send_packet("FIN", 1)
+            else:
+                self._send_packet("FIN", 0)
+            msg = "succeed" if outcome else "failed"
+            print(f"Requested {op_name}, server {msg}")
+
 
     def _listing(self) -> bool:
         try:
@@ -50,10 +62,8 @@ class RequestManager(Thread):
             print("LIST files sent successfully")
             return True
         except Exception as e:
-            print("Error: " + e)
+            logging.error("Error: " + e)
             return False
-        finally:
-            self._close()
         
     def _get_file(self, filename : str, seqno : int) -> bool:
         try:    
@@ -61,7 +71,7 @@ class RequestManager(Thread):
                 if os.listdir(self.file_dir).__contains__(filename):
                     print(f"{filename} is present")
                     path = self.file_dir + "/" + filename
-                    num_packet_to_send = math.ceil(os.path.getsize(path)/self.sending_buffer_size)
+                    num_packet_to_send = math.ceil(os.path.getsize(path)/self.sending_rate)
                     self._send_packet("GET", num_packet_to_send)
                     return True
                 else:
@@ -76,7 +86,11 @@ class RequestManager(Thread):
 
     def _upload_file(self, payload : str, seqno : str) -> bool:
         try:
+            #start upload procedure
             if seqno == -1:
+                if os.listdir(self.file_dir).__contains__(payload):
+                    os.remove(f"{self.file_dir}/{payload}")
+
                 if  os.path.isdir("./tmp"):
                     shutil.rmtree("./tmp")
                 os.mkdir("./tmp")
@@ -84,6 +98,15 @@ class RequestManager(Thread):
                 Path(filepath).touch()
                 #Server ready to receive
                 self._send_packet("PUT", None)
+            #finish upload procedure
+            elif seqno == -2:
+                filename = os.listdir("./tmp")[0]
+                filename = filename.replace("\'","")
+                dump_path = "./tmp/dump.txt"
+
+                if not self._compose_file(dump_path, f"./tmp/{filename}"):
+                    return False
+            #Save data chunck into temporary file
             else:
                 filename = os.listdir("./tmp")[0]
                 filename = filename.replace("\'","")
@@ -96,11 +119,7 @@ class RequestManager(Thread):
                 w = open(dump_path, "a")
                 w.write(json.dumps(chunck))
                 w.close()
-                
-                if sys.getsizeof(base64.b64decode(payload.encode())) < self.sending_buffer_size:
-                    #last packet
-                    if not self._compose_file(dump_path, f"./tmp/{filename}"):
-                        return False
+
         except Exception as e:
             logging.error("An error occurred: " + e)
             return False
@@ -109,6 +128,7 @@ class RequestManager(Thread):
             
 
     def _compose_file(self, dump : str, path : str) -> bool:
+        logging.info("COMPOSING FILE")
         try:
             f = open(dump, 'r')
             chuncks = f.read().replace("}{", "};{")
@@ -128,21 +148,22 @@ class RequestManager(Thread):
         return True
 
     def _save_file(self, filepath):
+        logging.info(f"Saving file into {self.file_dir}")
         shutil.move(filepath, self.file_dir)
         shutil.rmtree("./tmp")
-
+        
 
     def _send_block(self, filename : str, seqno: int):
         path = self.file_dir + "/" + filename
-        if seqno >= math.floor(os.path.getsize(path) / self.sending_buffer_size):
+        if seqno >= math.floor(os.path.getsize(path) / self.sending_rate):
             self.finish_sending = True
         payload = base64.b64encode(self._get_chunck(path, seqno)).decode('utf-8')
         self._send_packet("GET", payload, seqno)
  
     def _get_chunck(self, filepath : str, seqno : int) -> bytes:
         f = open(filepath, 'rb')
-        f.seek(self.sending_buffer_size*seqno, 0)
-        data =  f.read(self.sending_buffer_size)
+        f.seek(self.sending_rate*seqno, 0)
+        data =  f.read(self.sending_rate)
         f.close()
         return data
 
