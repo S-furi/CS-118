@@ -4,7 +4,8 @@ Required actions are (client side):
 - Require the list of all files contained in the server
 - Get a specified file from the server
 - Put a new file on the server
-
+- Send outcome messages for all the operations above
+- 
 ### Instructions
 First, launch the **server** with ```python3 server_runner.py``` and then run the **client** with:```python3 client_runner.py```. 
 A list of all the operations will be displayed and client waits for user's input choice:
