@@ -58,6 +58,7 @@ class Client:
                 raw_data, addr = self.socket.recvfrom(self.buffer_size)
                
                 if not self._check_incoming_package(raw_data):
+                    os.remove(filepath)
                     return False
 
                 pkg = decode_package(raw_data)
@@ -71,13 +72,16 @@ class Client:
                 f.write(chunck)
             f.close()
         except sock.timeout:
+            os.remove(filepath)
             logging.error("TIME OUT!")
             return False
         
         #Receiving final outcome of the operation
         data, addr = self.socket.recvfrom(self.buffer_size)
         if not self._check_incoming_package(data):
+            os.remove(filepath)
             logging.error("Something went wrong during download, please try again")
+            return False
         return True
 
     def upload_file(self, filename : str) -> bool:
