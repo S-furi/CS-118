@@ -73,6 +73,7 @@ class RequestManager(Thread):
                     path = self.file_dir + "/" + filename
                     num_packet_to_send = math.ceil(os.path.getsize(path)/self.sending_rate)
                     self._send_packet("GET", num_packet_to_send)
+                    print(f"GET {filename} requested")
                     return True
                 else:
                     logging.warning(f"File \"{filename}\" not found!")
@@ -98,6 +99,7 @@ class RequestManager(Thread):
                 Path(filepath).touch()
                 #Server ready to receive
                 self._send_packet("PUT", None)
+                print(f"PUT {payload} requested")
             #finish upload procedure
             elif seqno == -2:
                 filename = os.listdir("./tmp")[0]
