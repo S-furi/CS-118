@@ -3,7 +3,7 @@ from client import Client
 
 def display_outcome(outcome : bool, op_name : str):
     msg = "succeed" if outcome else "failed"
-    print(f"{op_name} {msg}")
+    print(f"\n{op_name} {msg}")
 
 def main():
     while True:
@@ -18,11 +18,9 @@ def main():
             display_outcome(clnt.get_list(), "LIST")
         elif op == '2':
             filename = input("Insert file name: ")
-            filename = filename.lower()
             display_outcome(clnt.get_file(filename), "GET")
         elif op == '3':
             filename = input("Insert file name: ")
-            filename = filename.lower()
             display_outcome(clnt.upload_file(filename), "PUT")
         
         elif op == '4':
