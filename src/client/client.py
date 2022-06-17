@@ -11,7 +11,7 @@ from utilities import *
 class Client:
     def __init__(self, server_addr):
         self.socket = sock.socket(sock.AF_INET, sock.SOCK_DGRAM)
-        self.socket.settimeout(3)
+        self.socket.settimeout(5)
         self.server_addr = server_addr
         self.buffer_size = 4096
         self.sending_rate = 2048
@@ -55,6 +55,7 @@ class Client:
 
             for i in range(expected_packets):
                 self._send_pkt("GET", filename, i)
+                self._print_progressbar(i, expected_packets)
                 raw_data, addr = self.socket.recvfrom(self.buffer_size)
                
                 if not self._check_incoming_package(raw_data):
@@ -84,33 +85,41 @@ class Client:
             return False
         return True
 
+
+
     def upload_file(self, filename : str) -> bool:
-        filepath = self.upload_dir + "/" + filename
-        if not os.path.isfile(filepath):
-            logging.warning(f"{filename} does not appear to be in upload directory")
+        try:
+            filepath = self.upload_dir + "/" + filename
+            if not os.path.isfile(filepath):
+                logging.warning(f"{filename} does not appear to be in upload directory")
+                return False
+            print(f"{filename} exists, preparing to upload")
+
+            self._send_pkt("PUT", filename, seqno=-1)
+
+            data, addr = self.socket.recvfrom(self.buffer_size)
+            #If everything is ok, server is ready to receive file chunks
+            if not self._check_incoming_package(data):
+                logging.error('An internal server error occurred, please try again')
+                return False
+
+            file_chunks = self._get_file_chunks(filepath, self.sending_rate)
+            chunks_no = math.ceil(os.path.getsize(filepath)/self.sending_rate)
+            logging.info(f'{filename} is {os.path.getsize(filepath)} and will be divided into {chunks_no} chunks')
+            print(f'Sending {filename}, {os.path.getsize(filepath)} bytes')
+            i = 0
+            for chunck in file_chunks:
+                self._print_progressbar(i, chunks_no)
+                payload = base64.b64encode(chunck).decode('utf-8')
+                self._send_pkt("PUT", payload, i)
+                i += 1
+            self._send_pkt("PUT", None, -2)
+            print("\nFinished sending, waiting for server response")
+            data, addr = self.socket.recvfrom(self.buffer_size)
+            return self._check_incoming_package(data)
+        except sock.timeout:
+            logging.error("TIME OUT!")
             return False
-        print(f"{filename} exists, preparing to upload")
-
-        self._send_pkt("PUT", filename, seqno=-1)
-
-        data, addr = self.socket.recvfrom(self.buffer_size)
-        #If everything is ok, server is ready to receive file chunks
-        if not self._check_incoming_package(data):
-            logging.error('An internal server error occurred, please try again')
-            return False
-
-        file_chunks = self._get_file_chunks(filepath, self.sending_rate)
-        chunks_no = math.ceil(os.path.getsize(filepath)/self.sending_rate)
-        logging.info(f'{filename} is {os.path.getsize(filepath)} and will be divided into {chunks_no} chunks')
-        print(f'Sending {filename}, {os.path.getsize(filepath)} bytes')
-        i = 0
-        for chunck in file_chunks:
-            payload = base64.b64encode(chunck).decode('utf-8')
-            self._send_pkt("PUT", payload, i)
-            i += 1
-        self._send_pkt("PUT", None, -2)
-        data, addr = self.socket.recvfrom(self.buffer_size)
-        return self._check_incoming_package(data)
         
 
     def _get_file_chunks(self, filepath : str, size : int):
@@ -136,6 +145,12 @@ class Client:
         pkt["checksum"] = compute_checksum(pkt)
         data = json.dumps(pkt)
         self.socket.sendto(data.encode(), self.server_addr)
+
+    def _print_progressbar(self, i ,n):
+        j = (i+1)/n
+        sys.stdout.write('\r')
+        sys.stdout.write("[%-20s] %d%%" % ('='*int(20*j), 100*j))
+        sys.stdout.flush()
 
     def close(self):
         self.socket.close()
