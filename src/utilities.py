@@ -4,16 +4,14 @@ import json
 
 """
 Header Composition:
-    -size
     -operation (LIST, GET, PUT, FIN)
-    -sequence number (Only used by PUT)
+    -sequence number (Only used by GET and PUT)
     -checksum
     -payload (in case of FIN, here is stored the success of the operation)
 """
 
 def build_packet(operation : str, payload, seqno=0) -> dict:
     pkt = {
-        "size" : sys.getsizeof(payload),
         "op" : operation,
         "seqno" : seqno,
         "checksum" : None,
