@@ -62,7 +62,7 @@ class Client:
                 # requesting i-th chunk
                 self._send_pkt("GET", filename, i)
                 self._print_progressbar(i, expected_packets)
-                # receiving i-tj chunk
+                # receiving i-th chunk
                 raw_data, addr = self.socket.recvfrom(self.buffer_size)
                
                 if not self._check_incoming_package(raw_data):
