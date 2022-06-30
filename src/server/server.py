@@ -20,6 +20,10 @@ class Server:
         self.socket.close()
         sys.exit(0)
     
+    '''
+    With this function the server is ready to receive messages on 
+    port Server.port at the address Server.address.
+    '''
     def listen(self):
         print(f"Server up on port {self.port} ready to receive")
         while True:
@@ -27,5 +31,8 @@ class Server:
             pkt = decode_package(data)
             if not checksum_integrity(pkt):
                 print("Checksum failed")
+            
+            # Once the operation and the payload are extracted, delegates the 
+            # required function to RequestManager.
             req_manger = RequestManager(addr, pkt["op"], pkt["payload"], pkt["seqno"])
             req_manger.start()
