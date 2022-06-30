@@ -22,15 +22,19 @@ class Client:
             os.mkdir(self.files_dir)
         if not os.path.isdir(self.upload_dir):
             os.mkdir(self.upload_dir)
+        
+        # default logging level, if you want to see logging.info messages,
+        # change level to logging.INFO.
+        logging.basicConfig(level=logging.WARNING)
 
     def get_list(self) -> bool:
         self._send_pkt("LIST", None)
         try:
             data, addr = self.socket.recvfrom(self.buffer_size)
             if self._check_incoming_package(data):
-                pkg = decode_package(data)
+                pkt = decode_package(data)
                 print("Files available for download:")
-                for name in pkg.get('payload').split():
+                for name in pkt.get('payload').split():
                     print(f'-{name}')
                 return True    
         except sock.timeout:
@@ -40,6 +44,7 @@ class Client:
     def get_file(self, filename : str) -> bool:
         try:
             print(f"Sending request for {filename} to the server")
+            # Requesting number of pkts to expect in next sendings.
             self._send_pkt("GET", filename, -1)
             raw_data, addr = self.socket.recvfrom(self.buffer_size)
             data = decode_package(raw_data)
@@ -54,22 +59,24 @@ class Client:
             f = open(filepath, 'w+b')
 
             for i in range(expected_packets):
+                # requesting i-th chunk
                 self._send_pkt("GET", filename, i)
                 self._print_progressbar(i, expected_packets)
+                # receiving i-tj chunk
                 raw_data, addr = self.socket.recvfrom(self.buffer_size)
                
                 if not self._check_incoming_package(raw_data):
                     os.remove(filepath)
                     return False
 
-                pkg = decode_package(raw_data)
-                rcv_seqno = pkg.get('seqno')
+                pkt = decode_package(raw_data)
+                rcv_seqno = pkt.get('seqno')
                 #Check if arrived package is the expected one
                 if rcv_seqno != i:
                     logging.warning(f'Expected #{i} but received #{rcv_seqno}, aborting operation try again')
                     return False
                 
-                chunck = base64.b64decode(pkg.get('payload').encode())
+                chunck = base64.b64decode(pkt.get('payload').encode())
                 f.write(chunck)
             f.close()
         except sock.timeout:
@@ -85,8 +92,6 @@ class Client:
             return False
         return True
 
-
-
     def upload_file(self, filename : str) -> bool:
         try:
             filepath = self.upload_dir + "/" + filename
@@ -95,6 +100,7 @@ class Client:
                 return False
             print(f"{filename} exists, preparing to upload")
 
+            # inform server that a PUT operation is requested from above
             self._send_pkt("PUT", filename, seqno=-1)
 
             data, addr = self.socket.recvfrom(self.buffer_size)
@@ -104,24 +110,30 @@ class Client:
                 return False
 
             file_chunks = self._get_file_chunks(filepath, self.sending_rate)
-            chunks_no = math.ceil(os.path.getsize(filepath)/self.sending_rate)
-            logging.info(f'{filename} is {os.path.getsize(filepath)} and will be divided into {chunks_no} chunks')
+            num_chunks = math.ceil(os.path.getsize(filepath)/self.sending_rate)
+            logging.info(f'{filename} is {os.path.getsize(filepath)} and will be divided into {num_chunks} chunks')
             print(f'Sending {filename}, {os.path.getsize(filepath)} bytes')
             i = 0
             for chunck in file_chunks:
-                self._print_progressbar(i, chunks_no)
+                self._print_progressbar(i, num_chunks)
                 payload = base64.b64encode(chunck).decode('utf-8')
                 self._send_pkt("PUT", payload, i)
                 i += 1
+            
+            # when finished sending, wait for server response
             self._send_pkt("PUT", None, -2)
-            print("\nFinished sending, waiting for server response")
+            logging.info("\nFinished sending, waiting for server response")
+            
+            # During the operation below, if the file is very big, timout can occur because
+            # server needs some time for the saving procedure. If timout is triggered in 
+            # the operation below, consider changing timout time to wait. 
             data, addr = self.socket.recvfrom(self.buffer_size)
             return self._check_incoming_package(data)
         except sock.timeout:
             logging.error("TIME OUT!")
             return False
         
-
+    # returns a generator of byte chunks of the given file
     def _get_file_chunks(self, filepath : str, size : int):
         with open(filepath, 'rb') as f:
             while content := f.read(size):
@@ -130,7 +142,7 @@ class Client:
     def _check_incoming_package(self, raw_data : bytes) -> bool:
         pkt = decode_package(raw_data)
         if pkt.get('op') == "FIN" and not pkt.get('payload'):
-            logging.info("Server failed sent premature FIN")
+            logging.info("Server failed and sent premature FIN")
             logging.warning("A problem occurred, please try again")
             return False
         if checksum_integrity(pkt):
