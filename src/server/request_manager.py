@@ -24,6 +24,9 @@ class RequestManager(Thread):
         self.sending_rate = 2048
         self.buffer_size = 4096
         signal.signal(signal.SIGINT, self._close)
+        # default logging level, if you want to see logging.info messages,
+        # change level to logging.INFO.
+        logging.basicConfig(level=logging.WARNING)
     
     '''
     The operation given to this thread is checked and executed in this function's body.
